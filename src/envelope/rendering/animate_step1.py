@@ -93,7 +93,7 @@ def generate_log(log_path: Path) -> None:
 def resolve_log_path() -> Path:
     candidates = [
         Path("sim_log_step1.npz"),
-        Path(__file__).resolve().parent / "sim_log_step1.npz",
+        Path(__file__).resolve().parent.parent / "sim_log_step1.npz",
     ]
     for candidate in candidates:
         if candidate.exists():
