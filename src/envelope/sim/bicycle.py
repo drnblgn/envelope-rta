@@ -1,5 +1,3 @@
-# src/envelope/sim/bicycle.py
-
 from dataclasses import dataclass
 import numpy as np
 
@@ -41,7 +39,7 @@ def step(state: VehicleState, control: Control, dt: float, params: VehicleParams
 
     x = state.x + v * np.cos(state.yaw) * dt
     y = state.y + v * np.sin(state.yaw) * dt
-    
+
     yaw = state.yaw + yaw_rate * dt
     # keep yaw in [-pi, pi]
     yaw = (yaw + np.pi) % (2 * np.pi) - np.pi
@@ -52,4 +50,3 @@ def step(state: VehicleState, control: Control, dt: float, params: VehicleParams
 def lateral_acceleration(v: float, steer: float, params: VehicleParams):
     steer = clamp(steer, -params.max_steer, params.max_steer)
     return v**2 * np.tan(steer) / params.wheelbase
-
