@@ -241,15 +241,17 @@ def main():
     )
 
     fps = int(round(1.0 / dt))
+    output_dir = log_path.parent / "videos"
+    output_dir.mkdir(parents=True, exist_ok=True)
     saved = []
     if animation.writers.is_available("ffmpeg"):
-        out = log_path.with_name("step1_unsafe_animation.mp4")
+        out = output_dir / "step1_unsafe_animation.mp4"
         ani.save(out, fps=fps, dpi=140, writer="ffmpeg")
-        saved.append(out.name)
+        saved.append(str(out))
     if animation.writers.is_available("pillow"):
-        out = log_path.with_name("step1_unsafe_animation.gif")
+        out = output_dir / "step1_unsafe_animation.gif"
         ani.save(out, fps=fps, dpi=140, writer="pillow")
-        saved.append(out.name)
+        saved.append(str(out))
     if not saved:
         raise RuntimeError(
             "No animation writer available. Install ffmpeg or pillow."

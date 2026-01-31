@@ -17,7 +17,7 @@ def main():
 
     state = VehicleState(0.0, 0.0, 0.0, 5.0)
 
-    xs, ys, a_lat = [], [], []
+    xs, ys, yaws, vs, steers, alats = [], [], [], [], [], []
 
     for _ in range(steps):
         u = ctrl.act(state, params, road.curvature)
@@ -25,10 +25,25 @@ def main():
 
         xs.append(state.x)
         ys.append(state.y)
-        a_lat.append(lateral_acceleration(state.v, u.steer, params))
+        yaws.append(state.yaw)
+        vs.append(state.v)
+        steers.append(u.steer)
+        alats.append(lateral_acceleration(state.v, u.steer, params))
 
-    a_lat = np.array(a_lat)
-    a_lat_max = 5.0  # safety limit for demo
+    xs = np.array(xs); ys = np.array(ys); yaws = np.array(yaws)
+    vs = np.array(vs); steers = np.array(steers); alats = np.array(alats)
+
+    a_lat_max = 5.0
+
+    # Save log for animation
+    np.savez(
+        "sim_log_step1.npz",
+        dt=dt,
+        xs=xs, ys=ys, yaws=yaws, vs=vs, steers=steers, alats=alats,
+        curvature=road.curvature,
+        wheelbase=params.wheelbase,
+        a_lat_max=a_lat_max,
+    )
 
     plt.figure()
     plt.plot(xs, ys)
@@ -38,12 +53,11 @@ def main():
     plt.ylabel("y (m)")
 
     plt.figure()
-    plt.plot(a_lat, label="lateral acceleration")
+    plt.plot(alats, label="lateral acceleration")
     plt.axhline(a_lat_max, linestyle="--", label="limit")
     plt.axhline(-a_lat_max, linestyle="--")
     plt.legend()
     plt.title("Clear Safety Violation")
-
     plt.show()
 
 
