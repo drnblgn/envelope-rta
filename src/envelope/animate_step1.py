@@ -15,11 +15,14 @@ from envelope.sim.bicycle import (
 from envelope.sim.world import CurvedRoad
 
 
-def vehicle_triangle(x, y, yaw, length=2.2, width=1.1):
+# Rectangle vehicle (matches Step 3 style)
+def vehicle_rect(x, y, yaw, length=4.5, width=2.0):
     pts = np.array([
-        [ length/2,  0.0],
-        [-length/2,  width/2],
+        [ length/2,  width/2],
+        [ length/2, -width/2],
         [-length/2, -width/2],
+        [-length/2,  width/2],
+        [ length/2,  width/2],
     ])
     c, s = np.cos(yaw), np.sin(yaw)
     R = np.array([[c, -s], [s, c]])
@@ -67,7 +70,6 @@ def generate_log(log_path: Path) -> None:
     violation_mask = np.abs(alats) > a_lat_max
     failure = summarize_failure(dt, violation_mask)
 
-
     log_path.parent.mkdir(parents=True, exist_ok=True)
     np.savez(
         log_path,
@@ -85,7 +87,6 @@ def generate_log(log_path: Path) -> None:
         has_violation=failure["has_violation"],
         first_violation_t=failure["first_violation_t"],
         violation_rate=failure["violation_rate"],
-
     )
 
 
@@ -116,11 +117,15 @@ def main():
     curvature = float(data["curvature"])
     a_lat_max = float(data["a_lat_max"])
 
+    # Normalize yaws
     yaws = (yaws + np.pi) % (2 * np.pi) - np.pi
+
+    # Violation info
     violation_mask = np.abs(alats) > a_lat_max
     first_violation = np.argmax(violation_mask) if np.any(violation_mask) else None
     first_violation_t = (first_violation * dt) if first_violation is not None else None
 
+    # Road center for curved road (your setup assumes this)
     R = 1.0 / curvature
     cx, cy = 0.0, R
 
@@ -128,53 +133,64 @@ def main():
     ax.set_aspect("equal", adjustable="box")
     ax.set_title("Envelope – Aggressive Controller (No Safety)")
 
-    theta = np.linspace(0, 2 * np.pi, 400)
+    # ---- Road (Step 3 style): dashed center + two offset boundaries ----
+    lane_half_width = 2.0
+    Nroad = 800
+    theta = np.linspace(-np.pi, np.pi, Nroad)  # full circle so road exists everywhere
+
     road_x = cx + R * np.cos(theta)
     road_y = cy + R * np.sin(theta)
-    ax.plot(road_x, road_y, linewidth=6, alpha=0.15)
 
-    lane_half_width = 2.0
-    ax.plot(
-        cx + (R - lane_half_width) * np.cos(theta),
-        cy + (R - lane_half_width) * np.sin(theta),
-        linewidth=2,
-        alpha=0.25,
-    )
-    ax.plot(
-        cx + (R + lane_half_width) * np.cos(theta),
-        cy + (R + lane_half_width) * np.sin(theta),
-        linewidth=2,
-        alpha=0.25,
-    )
+    dxr = np.gradient(road_x)
+    dyr = np.gradient(road_y)
+    nrm = np.sqrt(dxr * dxr + dyr * dyr) + 1e-9
+    nx = -dyr / nrm
+    ny = dxr / nrm
 
+    left_x = road_x + lane_half_width * nx
+    left_y = road_y + lane_half_width * ny
+    right_x = road_x - lane_half_width * nx
+    right_y = road_y - lane_half_width * ny
+
+    ax.plot(road_x, road_y, "--", linewidth=2, alpha=0.7)       # centerline
+    ax.plot(left_x, left_y, "-", linewidth=4, alpha=0.35)       # boundaries
+    ax.plot(right_x, right_y, "-", linewidth=4, alpha=0.35)
+
+    # ---- Unsafe visualization: push vehicle outward when over a_lat limit ----
     dx = xs - cx
     dy = ys - cy
     r = np.hypot(dx, dy)
     r = np.maximum(r, 1e-6)
     unit_x = dx / r
     unit_y = dy / r
+
     overshoot = np.clip((np.abs(alats) / a_lat_max) - 1.0, 0.0, None)
     skid_offset = overshoot * lane_half_width * 1.5
     r_vis = r + skid_offset
+
     xs_vis = cx + unit_x * r_vis
     ys_vis = cy + unit_y * r_vis
 
-    pad = 6.0
-    ax.set_xlim(min(xs_vis.min(), road_x.min()) - pad,
-                max(xs_vis.max(), road_x.max()) + pad)
-    ax.set_ylim(min(ys_vis.min(), road_y.min()) - pad,
-                max(ys_vis.max(), road_y.max()) + pad)
+    # Camera limits: include road + trajectory
+    pad = 8.0
+    all_x = np.concatenate([xs_vis, road_x, left_x, right_x])
+    all_y = np.concatenate([ys_vis, road_y, left_y, right_y])
+    ax.set_xlim(all_x.min() - pad, all_x.max() + pad)
+    ax.set_ylim(all_y.min() - pad, all_y.max() + pad)
 
+    # Trajectory + vehicle
     traj_line, = ax.plot([], [], linewidth=2)
+
     veh_patch = plt.Polygon(
-        vehicle_triangle(xs_vis[0], ys_vis[0], yaws[0]),
+        vehicle_rect(xs_vis[0], ys_vis[0], yaws[0]),
         closed=True,
         facecolor="tab:blue",
         edgecolor="black",
-        linewidth=1.0,
+        linewidth=2.0,
     )
     ax.add_patch(veh_patch)
 
+    # HUD + warning text (kept from your original)
     hud = ax.text(
         0.02, 0.98, "",
         transform=ax.transAxes,
@@ -193,7 +209,7 @@ def main():
 
     def init():
         traj_line.set_data([], [])
-        veh_patch.set_xy(vehicle_triangle(xs_vis[0], ys_vis[0], yaws[0]))
+        veh_patch.set_xy(vehicle_rect(xs_vis[0], ys_vis[0], yaws[0]))
         veh_patch.set_facecolor("tab:blue")
         hud.set_text("")
         warn.set_text("")
@@ -201,11 +217,14 @@ def main():
 
     def update(i):
         traj_line.set_data(xs_vis[:i+1], ys_vis[:i+1])
-        veh_patch.set_xy(vehicle_triangle(xs_vis[i], ys_vis[i], yaws[i]))
+        veh_patch.set_xy(vehicle_rect(xs_vis[i], ys_vis[i], yaws[i]))
 
         t = i * dt
+
+        # Determine off-road based on visual radial offset from centerline
         radial_offset = abs(np.hypot(xs_vis[i] - cx, ys_vis[i] - cy) - R)
         out_of_road = radial_offset > lane_half_width
+
         first_violation_text = (
             f"{first_violation_t:4.1f}s"
             if first_violation_t is not None
@@ -222,8 +241,10 @@ def main():
         if out_of_road:
             veh_patch.set_facecolor("tab:red")
             warn.set_text("OFF ROAD (no RTA)")
+            traj_line.set_linewidth(3)
         else:
             veh_patch.set_facecolor("tab:blue")
+            traj_line.set_linewidth(2)
             if abs(alats[i]) > a_lat_max:
                 warn.set_text("SAFETY VIOLATION (no RTA)")
             else:
@@ -243,6 +264,7 @@ def main():
     fps = int(round(1.0 / dt))
     output_dir = log_path.parent / "videos"
     output_dir.mkdir(parents=True, exist_ok=True)
+
     saved = []
     if animation.writers.is_available("ffmpeg"):
         out = output_dir / "step1_unsafe_animation.mp4"
@@ -253,15 +275,13 @@ def main():
         ani.save(out, fps=fps, dpi=140, writer="pillow")
         saved.append(str(out))
     if not saved:
-        raise RuntimeError(
-            "No animation writer available. Install ffmpeg or pillow."
-        )
+        raise RuntimeError("No animation writer available. Install ffmpeg or pillow.")
+
     print(f"Saved: {', '.join(saved)}")
 
     try:
         plt.show()
     except Exception:
-        # Safe to ignore on headless environments after export.
         pass
 
 
