@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+
+# Virtual env
+.venv/
+
+# macOS
+.DS_Store
+
+# Simulation outputs
+*.npz
+
+# Rendered media
+*.gif
+*.mp4
