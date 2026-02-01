@@ -131,7 +131,11 @@ def main():
             wet = 0.0
 
         # Apply "slippery road" physics: understeer (reduces effective steer)
-        steer_exec = float(u.steer) * (1.0 - 0.45 * wet)
+        if intervene:
+            steer_exec = float(u.steer)
+        else:
+            steer_exec = float(u.steer) * (1.0 - 0.45 * wet)
+        steer_exec = float(np.clip(steer_exec, -params.max_steer, params.max_steer))
         u_exec = type(u)(steer=steer_exec, accel=float(u.accel))
 
         state = step(state, u_exec, dt, params)
