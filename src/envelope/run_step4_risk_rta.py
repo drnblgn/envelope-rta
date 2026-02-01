@@ -10,7 +10,10 @@ from envelope.sim.world import CurvedRoad
 
 from envelope.rta.uncertainty import UncertaintyConfig, effective_a_lat_max
 from envelope.rta.risk_mc import RiskRTAConfig, RiskRTAMonteCarlo
-from envelope.ai.risk_interpreter import interpret_risk_with_openai
+from envelope.ai.risk_interpreter import (
+    interpret_risk_with_openai,
+    interpret_risk_offline,
+)
 
 
 def main():
@@ -21,7 +24,7 @@ def main():
     steps = int(T / dt)
 
     params = VehicleParams()
-    road = CurvedRoad(curvature=0.08)
+    road = CurvedRoad(curvature=0.05)
 
     aggressive = AggressiveController(target_speed=22.0)
     safe = SafeController(safe_speed=8.0)
@@ -42,7 +45,7 @@ def main():
         dt_rollout=dt,
         num_rollouts=50,  # start smaller for speed; you can raise to 80-120 later
         base_a_lat_max=5.0,
-        p_threshold_nominal=0.20,
+        p_threshold_nominal=0.70,
         p_threshold_min=0.05,
         rng_seed=0,
     )
@@ -61,14 +64,39 @@ def main():
     conservatism_log = []
     a_lat_max_eff_log = []
     ai_used_log = []
+    ai_rationale_log = []
 
-    # Telemetry update cadence (AI call cadence)
-    update_every = int(round(1.0 / dt))      # every 1.0s sim time
-    recent_window = int(round(1.0 / dt))     # look back 1.0s
+    # heartbeat printing only (no AI cadence)
     heartbeat_every = int(round(0.5 / dt))   # print every 0.5s sim time
 
-    conservatism = 0.5
-    ai_used = False
+    # ---------------------------
+    # Step 5: AI Risk Interpreter
+    # Compute conservatism ONCE per run (AI interprets context; never controls vehicle)
+    # ---------------------------
+    # Minimal telemetry for interpreter (deterministic & safe). You can enrich later.
+    telemetry = {
+        "speed_mps": float(state.v),
+        "curvature": float(road.curvature),
+        "max_recent_a_lat_ratio": 0.0,
+        "wetness": float(unc.wetness),
+        "steer_noise_std": float(unc.steer_noise_std),
+        "steer_bias": float(unc.steer_bias),
+    }
+
+    # If OPENAI_API_KEY is not set or openai pkg missing, your function falls back automatically.
+    # If you want to force offline, switch to interpret_risk_offline(...)
+    interp = interpret_risk_with_openai(scenario_text, telemetry)
+    if interp is None:
+        interp = interpret_risk_offline(scenario_text, telemetry)
+
+    conservatism = float(np.clip(interp.conservatism, 0.0, 1.0))
+    ai_used = bool(interp.ai_used)
+    ai_rationale = str(interp.rationale)
+
+    print(
+        f"Risk interpretation: conservatism={conservatism:.2f} ai_used={ai_used} rationale={ai_rationale}",
+        flush=True,
+    )
 
     print(
         f"Config: steps={steps}, dt={dt}, rollouts={rta_cfg.num_rollouts}, horizon={rta_cfg.horizon_s}s, wetness={unc.wetness}",
@@ -82,35 +110,10 @@ def main():
         if i % heartbeat_every == 0:
             print(f"t={i*dt:4.1f}s  step={i}/{steps}", flush=True)
 
-        # --- Telemetry summary + AI conservatism update (not every step) ---
-        if i % update_every == 0:
-            if len(alats) > 0:
-                recent = np.array(alats[-recent_window:], dtype=float)
-                ratio = float(np.max(np.abs(recent)) / max(rta_cfg.base_a_lat_max, 1e-6))
-            else:
-                ratio = 0.0
-
-            telemetry = {
-                "speed_mps": float(state.v),
-                "curvature": float(road.curvature),
-                "max_recent_a_lat_ratio": ratio,
-                "wetness": float(unc.wetness),
-                "steer_noise_std": float(unc.steer_noise_std),
-            }
-
-            interp = interpret_risk_with_openai(scenario_text, telemetry)
-            conservatism = float(np.clip(interp.conservatism, 0.0, 1.0))
-            ai_used = bool(interp.ai_used)
-
-            print(
-                f"AI risk interp: conservatism={conservatism:.2f} ai_used={ai_used} telemetry_ratio={ratio:.2f}",
-                flush=True,
-            )
-
         # --- Nominal control ---
         u_nom = aggressive.act(state, params, road.curvature)
 
-        # --- Risk RTA decision ---
+        # --- Risk RTA decision (uses run-level conservatism) ---
         intervene, p_v, p_th = risk_rta.should_intervene(state, u_nom, params, conservatism)
 
         if intervene:
@@ -146,11 +149,13 @@ def main():
         rta_active.append(bool(intervene))
         p_violate.append(float(p_v))
         p_threshold.append(float(p_th))
+
         conservatism_log.append(float(conservatism))
         a_lat_max_eff_log.append(
-            effective_a_lat_max(rta_cfg.base_a_lat_max, wet, conservatism)
+            float(effective_a_lat_max(rta_cfg.base_a_lat_max, wet, conservatism))
         )
         ai_used_log.append(bool(ai_used))
+        ai_rationale_log.append(str(ai_rationale))
 
     # Convert arrays
     xs = np.array(xs); ys = np.array(ys); yaws = np.array(yaws)
@@ -161,6 +166,7 @@ def main():
     conservatism_log = np.array(conservatism_log, dtype=float)
     a_lat_max_eff_log = np.array(a_lat_max_eff_log, dtype=float)
     ai_used_log = np.array(ai_used_log, dtype=bool)
+    ai_rationale_log = np.array(ai_rationale_log, dtype=object)
 
     out = Path(__file__).resolve().parent / "sim_log_step4_risk_rta.npz"
     np.savez(
@@ -178,6 +184,7 @@ def main():
         conservatism=conservatism_log,
         a_lat_max_eff=a_lat_max_eff_log,
         ai_used=ai_used_log,
+        ai_rationale=ai_rationale_log,
         scenario_text=str(scenario_text),
         num_rollouts=int(rta_cfg.num_rollouts),
         horizon_s=float(rta_cfg.horizon_s),
