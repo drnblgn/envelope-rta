@@ -1,0 +1,45 @@
+{
+  "id": "ai_20260201_105012",
+  "scenario_text": "heavy rain, sharp curve, fast highway at night",
+  "use_ai": true,
+  "sim": {
+    "dt": 0.05,
+    "T": 12.0
+  },
+  "world": {
+    "curvature": 0.06
+  },
+  "control": {
+    "target_speed": 22.0,
+    "safe_speed": 8.0
+  },
+  "vehicle_init": {
+    "x": 0.0,
+    "y": 0.0,
+    "yaw": 0.0,
+    "v": 5.0
+  },
+  "uncertainty": {
+    "steer_noise_std": 0.02,
+    "steer_bias": 0.03,
+    "speed_noise_std": 0.08,
+    "wetness": 0.0
+  },
+  "rta": {
+    "num_rollouts": 50,
+    "base_a_lat_max": 5.0,
+    "p_threshold_nominal": 0.85,
+    "p_threshold_min": 0.05,
+    "rng_seed": 2
+  },
+  "wet_patch": {
+    "t_start": 3.0,
+    "t_end": 7.0
+  },
+  "unc": {
+    "wetness": 0.6,
+    "steer_noise_std": 0.03,
+    "steer_bias": 0.03,
+    "speed_noise_std": 0.1
+  }
+}
