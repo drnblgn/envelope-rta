@@ -1,165 +1,316 @@
-Envelope RTA – Overview and How-To
-=================================
+# Envelope RTA
 
-This project simulates a vehicle on a curved road and demonstrates how
-Runtime Assurance (RTA) keeps the vehicle within safety limits under
-uncertainty. It includes:
-- Baseline unsafe behavior (Step 1)
-- Deterministic RTA (Step 3)
-- Risk-based RTA with uncertainty ladder (Step 4)
-- Optional AI-driven scenario generation and interpretation (Steps 6-7)
+Envelope RTA is a compact simulation and visualization project that demonstrates **Runtime Assurance (RTA)** for a vehicle driving on a curved road under increasing uncertainty.
 
+The project shows how safety supervisors can intervene when a nominal controller becomes unsafe, progressing from simple deterministic guards to probabilistic, risk-aware runtime assurance with Monte Carlo estimation and optional AI-driven scenario generation.
 
-Concept summary
----------------
-- A vehicle follows a curved road using an aggressive controller.
-- RTA modules estimate safety risk (deterministic or Monte Carlo).
-- When risk exceeds a threshold, a safe controller overrides the nominal one.
-- Videos visualize unsafe behavior, RTA intervention, and uncertainty effects.
+---
 
+## What this project demonstrates
 
-Project layout (high-level)
----------------------------
-- src/envelope/sim/              Core vehicle dynamics
-- src/envelope/control/          Controllers (aggressive, safe)
-- src/envelope/rta/              RTA logic (deterministic + Monte Carlo)
-- src/envelope/scenarios/        Scenario presets and AI-generated scenarios
-- src/envelope/rendering/        Animation scripts
-- src/envelope/videos/           Rendered outputs (mp4/gif)
+You will see the following progression:
 
+- **Step 1** – Unsafe baseline (no safety supervision)
+- **Step 3** – Deterministic Runtime Assurance
+- **Step 4** – Risk-based Runtime Assurance with uncertainty ladder (U0–U3)
+- **Steps 6–7 (optional)** – AI-generated scenarios and AI-assisted risk interpretation
 
-Setup
------
-1) Create/activate a Python environment
-2) Install dependencies (numpy, matplotlib, etc.)
+Each step produces logs and rendered videos that visualize controller behavior, safety intervention, and uncertainty effects.
 
-If you already have a venv:
-  source .venv/bin/activate
+---
 
+## Core concept
 
-Step 1 (unsafe baseline)
-------------------------
+- A vehicle follows a curved road using an **aggressive nominal controller**
+- A **Runtime Assurance (RTA)** module monitors safety constraints
+- When safety risk exceeds a threshold, control switches to a **safe controller**
+- Risk-based RTA estimates probability of failure using **Monte Carlo rollouts**
+- An **uncertainty ladder** progressively adds noise, bias, and environmental effects
+
+Videos visualize unsafe behavior, RTA intervention, and how uncertainty changes system behavior.
+
+---
+
+## Repository structure
+
+All source code lives under `src/envelope/`.
+
+### Simulation
+```
+src/envelope/sim/
+├── bicycle.py        # Vehicle dynamics
+├── world.py          # Road + environment
+└── risk_rta_sim.py   # Integrated simulation loop
+```
+
+### Controllers
+```
+src/envelope/control/
+├── aggressive.py     # Nominal controller
+└── safe.py           # Safety controller
+```
+
+### Runtime Assurance (RTA)
+```
+src/envelope/rta/
+├── deterministic.py
+├── risk_mc.py
+├── uncertainty.py
+├── metrics.py
+├── failure.py
+└── print_failure_summary.py
+```
+
+### Scenarios
+```
+src/envelope/scenarios/
+├── schema.py
+├── loader.py
+├── presets/
+└── ai_generated/
+```
+
+### AI (optional)
+```
+src/envelope/ai/
+├── scenario_generator.py
+└── risk_interpreter.py
+```
+
+### Rendering / Visualization
+```
+src/envelope/rendering/
+├── animate_step1.py
+├── animate_step3_rta.py
+├── animate_step4_risk_rta.py
+└── animate_step4_risk_rta_ai.py
+```
+
+### Videos (outputs)
+```
+src/envelope/videos/
+```
+
+### Top-level runnable modules
+```
+src/envelope/
+├── cli.py
+├── run_batch.py
+├── run_step3_rta.py
+├── run_step4_risk_rta.py
+├── run_step4_risk_rta_ai.py
+├── run_step6_scenario.py
+└── run_step7_ai_demo.py
+```
+
+---
+
+## Setup
+
+### Create and activate a virtual environment
+```
+python -m venv .venv
+source .venv/bin/activate
+```
+
+### Install dependencies
+```
+pip install numpy matplotlib pillow
+```
+
+> Video export to MP4 requires ffmpeg.
+> - macOS: brew install ffmpeg
+> - Ubuntu: sudo apt-get install ffmpeg
+
+---
+
+## Running the project
+
+All commands assume you are in the repo root and use:
+
+```
+PYTHONPATH=src
+```
+
+---
+
+## Step 1 — Unsafe baseline
+
 Run the baseline simulation:
-
-  PYTHONPATH=src python -m envelope.cli
+```
+PYTHONPATH=src python -m envelope.cli
+```
 
 Render the animation:
-
-  PYTHONPATH=src python -m envelope.rendering.animate_step1
-
-Outputs:
-  src/envelope/videos/step1_unsafe_animation.mp4 (and .gif if pillow)
-
-
-Step 3 (deterministic RTA)
---------------------------
-Run the RTA-enabled simulation:
-
-  PYTHONPATH=src python -m envelope.run_step3_rta
-
-Render:
-
-  PYTHONPATH=src python -m envelope.rendering.animate_step3_rta
-
-Outputs:
-  src/envelope/videos/step3_rta.mp4 (and .gif if pillow)
-
-
-Step 4 (risk RTA, non-AI) — Generate logs
------------------------------------------
-Use the preset ladder (U0–U3) and run the batch sim:
-
-  PYTHONPATH=src python -m envelope.run_batch
-
-This will create per-scenario logs in:
-  runs/<scenario_id>/sim_log.npz
-
-Example scenario IDs:
-  runs/u0_no_uncertainty/
-  runs/u1_steer_noise/
-  runs/u2_noise_plus_bias/
-  runs/u3_noise_bias_wet_patch/
-
-Note: Each preset sets "use_ai": false, so this is non-AI.
-
-
-Step 4 (risk RTA, non-AI) — Render videos
------------------------------------------
-Render a specific scenario log:
-
-  PYTHONPATH=src python -m envelope.rendering.animate_step4_risk_rta runs/u3_noise_bias_wet_patch
-
-Or pass the log file directly:
-
-  PYTHONPATH=src python -m envelope.rendering.animate_step4_risk_rta runs/u3_noise_bias_wet_patch/sim_log.npz
-
-Outputs are saved under the same parent folder:
-  runs/u3_noise_bias_wet_patch/videos/
-
-If you run with the default log in src/envelope, outputs go to:
-  src/envelope/videos/
-
-
-Step 4 (risk RTA, single run, non-AI)
--------------------------------------
-If you prefer the single-run script:
-
-  PYTHONPATH=src python -m envelope.run_step4_risk_rta
-
-This writes:
-  src/envelope/sim_log_step4_risk_rta.npz
-
-Then render:
-
-  PYTHONPATH=src python -m envelope.rendering.animate_step4_risk_rta src/envelope/sim_log_step4_risk_rta.npz
-
-
-Step 4 (risk RTA, AI scenario run)
-----------------------------------
-This path uses AI-generated scenarios and AI risk interpretation.
-If you do not want AI, skip this section.
-
-Run the AI scenario simulation:
-
-  PYTHONPATH=src python -m envelope.run_step4_risk_rta_ai
-
-Render the AI simulation log:
-
-  PYTHONPATH=src python -m envelope.rendering.animate_step4_risk_rta_ai --log runs/ai/tmp/sim_log_step4_risk_rta.npz
+```
+PYTHONPATH=src python -m envelope.rendering.animate_step1
+```
 
 Outputs (default):
-  src/envelope/videos/ai/<scenario_id>_step4_risk_rta_dynamic_ghost.mp4
+```
+src/envelope/videos/step1_unsafe_animation.mp4
+src/envelope/videos/step1_unsafe_animation.gif
+```
 
+---
 
-Step 6 (scenario presets)
--------------------------
-Run a single preset scenario by editing the preset in:
-  src/envelope/run_step6_scenario.py
+## Step 3 — Deterministic RTA
 
-Then run:
+Run the RTA-enabled simulation:
+```
+PYTHONPATH=src python -m envelope.run_step3_rta
+```
 
-  PYTHONPATH=src python -m envelope.run_step6_scenario
+Render:
+```
+PYTHONPATH=src python -m envelope.rendering.animate_step3_rta
+```
 
+Outputs:
+```
+src/envelope/videos/step3_rta.mp4
+```
 
-Step 7 (AI demo)
-----------------
-This script generates an AI scenario JSON and runs the AI pipeline.
+---
 
-  PYTHONPATH=src python -m envelope.run_step7_ai_demo
+## Step 4 — Risk-based RTA (non-AI)
 
+### Batch run (uncertainty ladder U0–U3)
 
-Troubleshooting
----------------
-- If MP4 export fails, install ffmpeg:
-    brew install ffmpeg
-- If you only get GIFs, Pillow is being used as a fallback.
-- If the output folder seems wrong, check the log path you passed.
+Run all preset scenarios:
+```
+PYTHONPATH=src python -m envelope.run_batch
+```
 
+This generates logs under:
+```
+runs/<scenario_id>/sim_log.npz
+```
 
-Quick reference
----------------
-Batch sim (U0–U3):
-  PYTHONPATH=src python -m envelope.run_batch
+Example scenario IDs:
+```
+runs/u0_no_uncertainty/
+runs/u1_steer_noise/
+runs/u2_noise_plus_bias/
+runs/u3_noise_bias_wet_patch/
+```
+
+---
+
+### Render a batch scenario
+
+Render by scenario folder:
+```
+PYTHONPATH=src python -m envelope.rendering.animate_step4_risk_rta runs/u3_noise_bias_wet_patch
+```
+
+Or render by explicit log file:
+```
+PYTHONPATH=src python -m envelope.rendering.animate_step4_risk_rta runs/u3_noise_bias_wet_patch/sim_log.npz
+```
+
+Outputs are saved to:
+```
+runs/u3_noise_bias_wet_patch/videos/
+```
+
+---
+
+### Single-run risk RTA (non-AI)
+
+Run:
+```
+PYTHONPATH=src python -m envelope.run_step4_risk_rta
+```
+
+This writes:
+```
+src/envelope/sim_log_step4_risk_rta.npz
+```
+
+Render:
+```
+PYTHONPATH=src python -m envelope.rendering.animate_step4_risk_rta src/envelope/sim_log_step4_risk_rta.npz
+```
+
+---
+
+## Step 4 — Risk-based RTA (AI scenario + AI interpretation)
+
+Run the AI-based simulation:
+```
+PYTHONPATH=src python -m envelope.run_step4_risk_rta_ai
+```
+
+Render the AI simulation log:
+```
+PYTHONPATH=src python -m envelope.rendering.animate_step4_risk_rta_ai --log runs/ai/tmp/sim_log_step4_risk_rta.npz
+```
+
+Default outputs:
+```
+src/envelope/videos/ai/<scenario_id>_step4_risk_rta_dynamic_ghost.mp4
+```
+
+---
+
+## Step 6 — Scenario presets
+
+Edit the selected preset in:
+```
+src/envelope/run_step6_scenario.py
+```
+
+Run:
+```
+PYTHONPATH=src python -m envelope.run_step6_scenario
+```
+
+---
+
+## Step 7 — AI demo
+
+Generates an AI scenario JSON and runs the full AI pipeline:
+```
+PYTHONPATH=src python -m envelope.run_step7_ai_demo
+```
+
+---
+
+## Troubleshooting
+
+- Only GIFs generated → install ffmpeg
+- Output folder unexpected → outputs are written next to the log path
+- Module not found → ensure PYTHONPATH=src and run from repo root
+
+---
+
+## Quick reference
+
+Batch simulation:
+```
+PYTHONPATH=src python -m envelope.run_batch
+```
 
 Render a scenario:
-  PYTHONPATH=src python -m envelope.rendering.animate_step4_risk_rta runs/<id>
+```
+PYTHONPATH=src python -m envelope.rendering.animate_step4_risk_rta runs/<scenario_id>
+```
+
+---
+
+## Repo artifacts
+
+Pitch decks included in this repository:
+- Envelope. - short pitch.pdf
+- Envelope. - long pitch.pdf
+
+---
+
+## Tools used
+
+This project was built with support from:
+- Cursor Pro
+- ChatGPT Plus
+- Gemini (Banana Nano & Pro)
+- Perplexity Pro
